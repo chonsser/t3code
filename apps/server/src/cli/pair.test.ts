@@ -334,6 +334,39 @@ describe("t3 pair", () => {
     ),
   );
 
+  it.effect("pairs through the tailcat address the running server recorded", () =>
+    withDescriptorServer((origin) =>
+      Effect.gen(function* () {
+        const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-tailcat-"));
+        const port = Number(new URL(origin).port);
+        const statePath = NodePath.join(baseDir, "userdata", "server-runtime.json");
+        const state = yield* makePersistedServerRuntimeState({
+          config: { host: "127.0.0.1", devUrl: undefined },
+          port,
+        });
+        yield* persistServerRuntimeState({ path: statePath, state });
+
+        const notServing = yield* provideCliTestLayers(
+          runCli(["pair", "--base-dir", baseDir, "--tailcat"]).pipe(Effect.flip),
+        );
+        assert.include(String(notServing), "is not serving over tailcat");
+
+        const address = "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl";
+        yield* persistServerRuntimeState({
+          path: statePath,
+          state: { ...state, tailcat: { address, port } },
+        });
+        const output = yield* captureStdout(runCli(["pair", "--base-dir", baseDir, "--tailcat"]));
+
+        const token = /#token=([A-Z2-9]+)/.exec(output)?.[1];
+        assert.isString(token);
+        const pairingUrl = `tailcat:${address}:${String(port)}#token=${token}`;
+        assert.include(output, `Pairing URL: ${pairingUrl}`);
+        assert.include(output, `App link: ${buildPairingAppLink(pairingUrl)}`);
+      }),
+    ).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+
   it.effect("pairs through the recorded dev web URL for dev servers", () =>
     withDescriptorServer((origin) =>
       Effect.gen(function* () {

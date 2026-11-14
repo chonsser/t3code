@@ -22,6 +22,7 @@ import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
@@ -218,9 +219,14 @@ import * as RunFinalizationService from "./orchestration-v2/RunFinalizationServi
 import * as ProjectionMaintenance from "./orchestration-v2/ProjectionMaintenance.ts";
 import * as ProjectionStoreV2 from "./orchestration-v2/ProjectionStore.ts";
 import { makePersistedServerRuntimeState } from "./serverRuntimeState.ts";
-import { acceptsPrivateNetworkConnection, loopbackUrlHostForAddress } from "./startupAccess.ts";
+import {
+  acceptsPrivateNetworkConnection,
+  isLoopbackHost,
+  loopbackUrlHostForAddress,
+} from "./startupAccess.ts";
 import * as OrchestrationHttp from "./orchestration-v2/http.ts";
 import * as ProjectHttp from "./project/http.ts";
+import { isWildcardHost } from "@t3tools/shared/hostClassification";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import {
@@ -231,6 +237,7 @@ import {
   readTailscaleStatus,
 } from "@t3tools/tailscale";
 import * as ServerActivation from "./serverActivation.ts";
+import { serveTailcat } from "./tailcat.ts";
 
 // Escaped MCP handoff provenance can exceed find-my-way's 100-character segment default.
 const HTTP_ROUTER_CONFIG = {
@@ -357,6 +364,7 @@ const layerHttpServer = Layer.unwrap(
       authPolicy: EnvironmentAuthPolicy.resolveServerAuthPolicy(config),
       host: config.host,
       tailscaleServeEnabled: config.tailscaleServeEnabled,
+      tailcatEnabled: config.tailcatEnabled,
       privateNetworkOnly: config.privateNetworkOnly,
     });
     yield* ManagedLimits.closeTailscaleServeTo(policy, { host: bindHost, port: config.port });
@@ -940,13 +948,36 @@ const layerMakeServer = Layer.unwrap(
           serviceManaged: launcher.managed,
           managedPolicy: yield* ManagedPolicy.loadedPolicy(yield* ManagedPolicy.ManagedPolicy),
         });
-        yield* ownership
-          .publish(state)
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to persist server runtime state", { cause }),
-            ),
+        const publish = (next: typeof state) =>
+          ownership
+            .publish(next)
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to persist server runtime state", { cause }),
+              ),
+            );
+        yield* publish(state);
+        if (config.tailcatEnabled !== true) return;
+        const path = yield* Path.Path;
+        // `tailcat serve` proxies to localhost, which a server bound to one other address ignores.
+        if (config.host && !isWildcardHost(config.host) && !isLoopbackHost(config.host)) {
+          yield* Effect.logWarning(
+            `Tailcat left off; it can only proxy to localhost, and the server listens on ${config.host}`,
           );
+          return;
+        }
+        // Published after the runtime state, so a slow or missing tailcat never hides the server.
+        yield* serveTailcat({
+          port: address.port,
+          keyPath: path.join(config.stateDir, "tailcat.private.json"),
+        }).pipe(
+          Effect.flatMap((tailcatAddress) =>
+            publish({ ...state, tailcat: { address: tailcatAddress, port: address.port } }),
+          ),
+          Effect.tap(() => Effect.logInfo("Tailcat serving", { port: address.port })),
+          Effect.catch((cause) => Effect.logWarning(cause.message, { cause })),
+          Effect.forkScoped,
+        );
       }),
     );
     const tailscaleServeRootHolder = (target: { readonly host: string; readonly port: number }) =>

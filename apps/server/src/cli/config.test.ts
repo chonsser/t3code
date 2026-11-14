@@ -49,6 +49,7 @@ const minimalDesktopFlags = (baseDir: string) => ({
   logWebSocketEvents: Option.none<boolean>(),
   tailscaleServeEnabled: Option.none<boolean>(),
   tailscaleServePort: Option.none<number>(),
+  tailcatEnabled: Option.none(),
   lan: Option.none<boolean>(),
 });
 
@@ -232,6 +233,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        tailcatEnabled: Option.none(),
         lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
@@ -277,6 +279,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        tailcatEnabled: Option.none(),
         lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
@@ -333,6 +336,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.some(false),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.none(),
@@ -410,6 +414,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.some("Debug"),
@@ -558,6 +563,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.none(),
@@ -607,6 +613,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.none(),
@@ -648,6 +655,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.none(),
@@ -711,6 +719,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           logWebSocketEvents: Option.none(),
           tailscaleServeEnabled: Option.none(),
           tailscaleServePort: Option.none(),
+          tailcatEnabled: Option.none(),
           lan: Option.none(),
         },
         Option.none(),
@@ -751,6 +760,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     logWebSocketEvents: Option.none<boolean>(),
     tailscaleServeEnabled: Option.none<boolean>(),
     tailscaleServePort: Option.none<number>(),
+    tailcatEnabled: Option.none(),
     lan: Option.none<boolean>(),
   });
 

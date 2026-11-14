@@ -29,6 +29,11 @@ export class BearerConnectionProfile extends Schema.TaggedClass<BearerConnection
      * interface. A bare 100.64.0.0/10 address could belong to any VPN.
      */
     network: Schema.optionalKey(Schema.Literal("tailscale")),
+    /**
+     * Set on a route reached through a tailcat tunnel. Its URL fields then hold
+     * a placeholder, and the address is a secret, like the token.
+     */
+    tailcat: Schema.optionalKey(Schema.Struct({ address: Schema.String, port: Schema.Number })),
   },
 ) {}
 

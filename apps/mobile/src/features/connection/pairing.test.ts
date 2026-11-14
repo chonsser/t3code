@@ -22,6 +22,20 @@ describe("buildPairingUrl", () => {
   });
 });
 
+describe("tailcat pairing links", () => {
+  it("round-trips through the address and code fields", () => {
+    const address = "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl";
+    const pairingUrl = `tailcat:${address}:3773#token=pairing-token`;
+
+    expect(parsePairingUrl(pairingUrl)).toEqual({
+      host: `tailcat:${address}:3773`,
+      code: "pairing-token",
+    });
+    expect(buildPairingUrl(`tailcat:${address}:3773`, "pairing-token")).toBe(pairingUrl);
+    expect(buildPairingUrl(`${address}:3773`, "pairing-token")).toBe(pairingUrl);
+  });
+});
+
 describe("extractPairingUrlFromQrPayload", () => {
   it("unwraps mobile deep links that carry an encoded pairing url", () => {
     expect(

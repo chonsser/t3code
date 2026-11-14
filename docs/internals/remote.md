@@ -55,6 +55,19 @@ dropped, which is how a changed LAN address replaces the old one; routes the
 user saved are never touched. The reported addresses are hints like any advertised endpoint, so a
 learned route still has to answer as this environment before it is used.
 
+A tailcat route is a bearer route with no URL of its own. Its profile carries
+the tailcat address, and the
+[resolver](../../packages/client-runtime/src/connection/resolver.ts) asks the
+platform's `TailcatGateway` for a loopback URL before each connect, so every
+other layer keeps talking HTTP and WebSocket. The loopback port changes whenever
+the tunnel is rebuilt, which is why the saved URL is a placeholder and
+`routeHttpBaseUrl` reports none: nothing may probe, poll, or share it. Only
+mobile links the tailcat client, built from
+[`modules/t3-tailcat/go`](../../apps/mobile/modules/t3-tailcat/go) into
+committed binaries by `scripts/build-libt3tailcat.sh`. The server side is a
+`tailcat serve` child process whose address is recorded in the runtime state
+for `t3 pair --tailcat`.
+
 A background service with no configured host is what makes this work for
 headless machines. It listens on every IPv4 interface and closes each
 connection unless both addresses of the direct peer are loopback, private, or

@@ -21,6 +21,7 @@ export type ConnectionRouteKind =
   | "tailnet"
   | "vpn"
   | "public"
+  | "tailcat"
   | "ssh";
 
 export const RELAY_ROUTE_ID = "relay";
@@ -65,10 +66,18 @@ export function routeEntry(
   return entryWithRoutes(entry, [route]);
 }
 
+/** The URL that reaches the route directly; a tunnelled route (SSH, tailcat) has none. */
 export function routeHttpBaseUrl(route: ConnectionRoute): string | null {
   if (route.target._tag === "PrimaryConnectionTarget") return route.target.httpBaseUrl;
   const profile = Option.getOrNull(route.profile);
-  return profile?._tag === "BearerConnectionProfile" ? profile.httpBaseUrl : null;
+  return profile?._tag === "BearerConnectionProfile" && profile.tailcat === undefined
+    ? profile.httpBaseUrl
+    : null;
+}
+
+function routeTailcatEndpoint(route: ConnectionRoute) {
+  const profile = Option.getOrNull(route.profile);
+  return profile?._tag === "BearerConnectionProfile" ? profile.tailcat : undefined;
 }
 
 function routeHostname(route: ConnectionRoute): string | null {
@@ -96,6 +105,7 @@ export function connectionRouteKind(route: ConnectionRoute): ConnectionRouteKind
       return "ssh";
     case "PrimaryConnectionTarget":
     case "BearerConnectionTarget": {
+      if (routeTailcatEndpoint(route) !== undefined) return "tailcat";
       const hostname = routeHostname(route);
       if (hostname === null) return "public";
       const profile = Option.getOrNull(route.profile);
@@ -134,6 +144,8 @@ const ROUTE_KIND_RANK: Record<ConnectionRouteKind, number> = {
   tailnet: 2,
   vpn: 2,
   public: 3,
+  // Often relayed, so tried after addresses that answer directly.
+  tailcat: 4,
   ssh: 4,
   relay: 5,
 };
@@ -178,7 +190,9 @@ function routeAddressKey(route: ConnectionRoute): string | null {
   const profile = Option.getOrNull(route.profile);
   switch (profile?._tag) {
     case "BearerConnectionProfile":
-      return `bearer:${profile.httpBaseUrl.replace(/\/+$/, "")}`;
+      return profile.tailcat === undefined
+        ? `bearer:${profile.httpBaseUrl.replace(/\/+$/, "")}`
+        : `tailcat:${profile.tailcat.address}:${String(profile.tailcat.port)}`;
     case "SshConnectionProfile":
       return `ssh:${sshTargetKey(profile.target)}`;
     default:
@@ -198,6 +212,8 @@ export function connectionRouteLabel(route: ConnectionRoute): string {
       return "Tailscale";
     case "vpn":
       return "VPN";
+    case "tailcat":
+      return "Tailcat";
     case "ssh": {
       const profile = Option.getOrNull(route.profile);
       return profile?._tag === "SshConnectionProfile"
@@ -214,6 +230,9 @@ export function connectionRouteAddress(route: ConnectionRoute): string | null {
     const profile = Option.getOrNull(route.profile);
     return profile?._tag === "SshConnectionProfile" ? profile.target.alias : null;
   }
+  const tailcat = routeTailcatEndpoint(route);
+  // The address is a secret, so only enough of it to tell two routes apart is shown.
+  if (tailcat !== undefined) return `tailcat:${tailcat.address.slice(0, 10)}…`;
   return routeHttpBaseUrl(route);
 }
 
@@ -402,6 +421,7 @@ function withNetwork(route: ConnectionRoute, tailscale: boolean): ConnectionRout
         wsBaseUrl: profile.wsBaseUrl,
         ...(profile.learned === undefined ? {} : { learned: profile.learned }),
         ...(profile.authorization === undefined ? {} : { authorization: profile.authorization }),
+        ...(profile.tailcat === undefined ? {} : { tailcat: profile.tailcat }),
         ...(tailscale ? { network: "tailscale" as const } : {}),
       }),
     ),

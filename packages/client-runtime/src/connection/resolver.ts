@@ -125,6 +125,7 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
 const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")(function* () {
   const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
   const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+  const tailcat = yield* ClientCapabilities.TailcatGateway;
 
   return Effect.fn("clientRuntime.connection.broker.bearer")(function* (
     entry: ConnectionCatalogEntry & { readonly target: BearerConnectionTarget },
@@ -163,10 +164,12 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
     if (!isBearerCredential(credential)) {
       return yield* credentialMissingError(target.connectionId);
     }
+    const endpoint =
+      profile.tailcat === undefined ? profile : yield* tailcat.forward(profile.tailcat);
     const authorized = yield* remote.authorizeBearer({
       expectedEnvironmentId: target.environmentId,
-      httpBaseUrl: profile.httpBaseUrl,
-      wsBaseUrl: profile.wsBaseUrl,
+      httpBaseUrl: endpoint.httpBaseUrl,
+      wsBaseUrl: endpoint.wsBaseUrl,
       bearerToken: credential.token,
       connectionMethod: "direct",
     });

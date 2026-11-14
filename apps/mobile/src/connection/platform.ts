@@ -19,6 +19,7 @@ import { AppState } from "react-native";
 
 import { authClientMetadata } from "../lib/authClientMetadata";
 import * as Runtime from "../lib/runtime";
+import { tailcatGateway } from "../native/tailcat";
 import * as MobileStorage from "../persistence/mobile-storage";
 import { appAtomRegistry } from "../state/atom-registry";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
@@ -211,6 +212,7 @@ const layerCapabilities = Layer.effectContext(
           metadata: authClientMetadata(Constants.expoConfig?.version),
         }),
       ),
+      Context.add(ClientCapabilities.TailcatGateway, tailcatGateway),
       Context.add(
         ClientCapabilities.SshEnvironmentGateway,
         ClientCapabilities.SshEnvironmentGateway.of({

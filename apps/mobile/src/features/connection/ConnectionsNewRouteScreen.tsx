@@ -247,7 +247,7 @@ function PairingForm({
               )}
             >
               {pairingConnectionError ??
-                "For machines on your local network or tailnet. The machine keeps its own provider credentials."}
+                "For machines on your local network or tailnet. A tailcat address from t3 pair --tailcat works too. The machine keeps its own provider credentials."}
             </Text>
           </View>
 

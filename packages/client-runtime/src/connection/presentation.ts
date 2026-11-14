@@ -3,7 +3,12 @@ import * as Option from "effect/Option";
 
 import type { ConnectionCatalogEntry } from "./catalog.ts";
 import type { ConnectionTarget, SupervisorConnectionState } from "./model.ts";
-import { connectionRouteId, connectionRoutes, routeHttpBaseUrl } from "./routes.ts";
+import {
+  connectionRouteAddress,
+  connectionRouteId,
+  connectionRoutes,
+  routeHttpBaseUrl,
+} from "./routes.ts";
 
 export type EnvironmentConnectionPhase =
   | "available"
@@ -161,9 +166,7 @@ export function connectionCatalogDisplayUrl(entry: ConnectionCatalogEntry): stri
     case "RelayConnectionTarget":
       return null;
     case "BearerConnectionTarget":
-      return Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
-        ? entry.profile.value.httpBaseUrl
-        : null;
+      return connectionRouteAddress(entry);
     case "SshConnectionTarget":
       return Option.isSome(entry.profile) && entry.profile.value._tag === "SshConnectionProfile"
         ? `${entry.profile.value.target.username}@${entry.profile.value.target.hostname}`

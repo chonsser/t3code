@@ -82,6 +82,13 @@ it.effect("refuses Tailscale Serve when remote clients are not allowed", () =>
       tailscaleServeEnabled: true,
     }).pipe(Effect.flip);
     assert.include(error.message, "Tailscale Serve");
+    const tailcat = yield* ManagedLimits.checkServerReachability(desktopAndLocal, {
+      authPolicy: "loopback-browser",
+      host: undefined,
+      tailscaleServeEnabled: false,
+      tailcatEnabled: true,
+    }).pipe(Effect.flip);
+    assert.include(tailcat.message, "so tailcat cannot be turned on");
   }),
 );
 

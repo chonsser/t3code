@@ -14,6 +14,7 @@ import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import {
   BearerConnectionCredential,
+  BearerConnectionProfile,
   type ConnectionCatalogEntry,
   SshConnectionProfile,
   type ConnectionCredential,
@@ -21,6 +22,7 @@ import {
 } from "./catalog.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
 import {
+  BearerConnectionTarget,
   ConnectionTransientError,
   PrimaryConnectionTarget,
   SshConnectionTarget,
@@ -216,6 +218,90 @@ describe("ConnectionResolver", () => {
           capabilities: { repositoryIdentity: true },
         },
       });
+    }),
+  );
+
+  it.effect("connects a tailcat route through the tunnel's loopback address", () =>
+    Effect.gen(function* () {
+      const endpoint = {
+        address: "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl",
+        port: 3773,
+      };
+      const target = new BearerConnectionTarget({
+        environmentId: ENVIRONMENT_ID,
+        label: "Tailcat",
+        connectionId: "tailcat-1",
+      });
+      const profile = new BearerConnectionProfile({
+        connectionId: "tailcat-1",
+        environmentId: ENVIRONMENT_ID,
+        label: "Tailcat",
+        httpBaseUrl: "http://tailcat.invalid/",
+        wsBaseUrl: "ws://tailcat.invalid/",
+        tailcat: endpoint,
+      });
+      const authorized = yield* Ref.make<ReadonlyArray<string>>([]);
+      const forwarded = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const layerBroker = yield* makeDependencies({
+        credentials: [["tailcat-1", new BearerConnectionCredential({ token: "paired-token" })]],
+        authorizeBearer: (input) =>
+          Ref.update(authorized, (urls) => [...urls, input.httpBaseUrl, input.wsBaseUrl]).pipe(
+            Effect.as({
+              environmentId: input.expectedEnvironmentId,
+              label: "Tailcat",
+              httpBaseUrl: input.httpBaseUrl,
+              socketUrl: "ws://127.0.0.1:50123/ws?wsTicket=bearer",
+              httpAuthorization: { _tag: "Bearer" as const, token: input.bearerToken },
+            }),
+          ),
+      });
+      const broker = yield* ConnectionResolver.ConnectionResolver.pipe(
+        Effect.provide(layerBroker),
+        Effect.provideService(ClientCapabilities.TailcatGateway, {
+          forward: (requested) =>
+            Ref.update(forwarded, (all) => [...all, requested]).pipe(
+              Effect.as({
+                httpBaseUrl: "http://127.0.0.1:50123/",
+                wsBaseUrl: "ws://127.0.0.1:50123/",
+              }),
+            ),
+        }),
+      );
+
+      const prepared = yield* broker.prepare(catalogEntry(target, Option.some(profile)));
+
+      expect(yield* Ref.get(forwarded)).toEqual([endpoint]);
+      expect(yield* Ref.get(authorized)).toEqual([
+        "http://127.0.0.1:50123/",
+        "ws://127.0.0.1:50123/",
+      ]);
+      expect(prepared.httpBaseUrl).toBe("http://127.0.0.1:50123/");
+    }),
+  );
+
+  it.effect("refuses a tailcat route on a client without the tailcat library", () =>
+    Effect.gen(function* () {
+      const target = new BearerConnectionTarget({
+        environmentId: ENVIRONMENT_ID,
+        label: "Tailcat",
+        connectionId: "tailcat-1",
+      });
+      const profile = new BearerConnectionProfile({
+        connectionId: "tailcat-1",
+        environmentId: ENVIRONMENT_ID,
+        label: "Tailcat",
+        httpBaseUrl: "http://tailcat.invalid/",
+        wsBaseUrl: "ws://tailcat.invalid/",
+        tailcat: { address: "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl", port: 3773 },
+      });
+      const layerBroker = yield* makeDependencies({
+        credentials: [["tailcat-1", new BearerConnectionCredential({ token: "paired-token" })]],
+      });
+      const broker = yield* ConnectionResolver.ConnectionResolver.pipe(Effect.provide(layerBroker));
+
+      const error = yield* Effect.flip(broker.prepare(catalogEntry(target, Option.some(profile))));
+
+      expect(error).toMatchObject({ _tag: "ConnectionBlockedError", reason: "unsupported" });
     }),
   );
 

@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["T3TailcatModule"], "podspecPath": "T3Tailcat.podspec" },
+  "android": { "modules": ["expo.modules.t3tailcat.T3TailcatModule"] }
+}

@@ -4,11 +4,12 @@ import {
   type DesktopSshEnvironmentTarget,
   EnvironmentId,
 } from "@t3tools/contracts";
+import type { TailcatEndpoint } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
 
-import type { ConnectionAttemptError } from "../connection/model.ts";
+import { ConnectionBlockedError, type ConnectionAttemptError } from "../connection/model.ts";
 
 export interface PreparedSshEnvironment {
   readonly bootstrap: DesktopSshEnvironmentBootstrap;
@@ -64,6 +65,30 @@ export class PrimaryEnvironmentAuth extends Context.Service<
     readonly bearerToken: Effect.Effect<Option.Option<string>, ConnectionAttemptError>;
   }
 >()("@t3tools/client-runtime/platform/capabilities/PrimaryEnvironmentAuth") {}
+
+/**
+ * Opens tailcat tunnels. `forward` returns the loopback URLs that reach the
+ * endpoint, reusing a live tunnel and replacing a dead one, so the port can
+ * differ between calls. Only clients that link the tailcat library provide it.
+ */
+export class TailcatGateway extends Context.Reference<{
+  readonly forward: (
+    endpoint: TailcatEndpoint,
+  ) => Effect.Effect<
+    { readonly httpBaseUrl: string; readonly wsBaseUrl: string },
+    ConnectionAttemptError
+  >;
+}>("@t3tools/client-runtime/platform/capabilities/TailcatGateway", {
+  defaultValue: () => ({
+    forward: () =>
+      Effect.fail(
+        new ConnectionBlockedError({
+          reason: "unsupported",
+          detail: "Tailcat connections are only available in the mobile app.",
+        }),
+      ),
+  }),
+}) {}
 
 export class SshEnvironmentGateway extends Context.Service<
   SshEnvironmentGateway,
