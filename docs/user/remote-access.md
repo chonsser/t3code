@@ -219,6 +219,36 @@ tailscale serve --https=443 --set-path=/ off
 If that port is already in use, choose another with
 `--tailscale-serve-port`. See `t3 pair --help` for other pairing options.
 
+### Tailcat
+
+[Tailcat](https://github.com/tailscale/tailcat) connects the mobile app to a
+machine from any network through an encrypted tunnel, with no Tailscale account,
+no tailnet, and no open port. Install the `tailcat` command on the machine,
+then start the server with it:
+
+```bash
+t3 serve --tailcat
+```
+
+`T3CODE_TAILCAT=1` does the same, including for the background service. Then
+print a pairing code and scan it in the mobile app under **Settings →
+Environments → Add environment**:
+
+```bash
+t3 pair --tailcat
+```
+
+The link starts with `tailcat:` and can also be pasted into the **Address**
+field. Only the mobile app opens tailcat routes; desktop and web keep using the
+other routes on this page. The tunnel connects directly when both networks
+allow it and through Tailscale's public relays otherwise, so it can be slower
+than a LAN or tailnet route.
+
+The tailcat address stays the same across restarts, so the phone reconnects
+without pairing again. Whoever holds it can reach the server's port but still
+needs a paired token. To replace the address, stop the server and delete
+`tailcat.private.json` from its data directory.
+
 ### Hosted web app
 
 [app.t3.codes](https://app.t3.codes) needs an HTTPS endpoint. It connects directly

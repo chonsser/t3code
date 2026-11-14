@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildPairingAppLink,
+  buildTailcatPairingUrl,
   readPairingAppLink,
   RemoteBackendUrlMissingError,
   RemotePairingTokenMissingError,
@@ -142,6 +143,38 @@ describe("remote", () => {
         host: "remote.example.com",
       }),
     );
+  });
+
+  it("reads a tailcat pairing link without changing the case of its address", () => {
+    const endpoint = {
+      address: "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl",
+      port: 3773,
+    };
+    const tailcatTarget = {
+      credential: "pairing-token",
+      httpBaseUrl: "http://tailcat.invalid/",
+      wsBaseUrl: "ws://tailcat.invalid/",
+      tailcat: endpoint,
+    };
+    const pairingUrl = buildTailcatPairingUrl(endpoint, "pairing-token");
+
+    expect(pairingUrl).toBe(`tailcat:${endpoint.address}:3773#token=pairing-token`);
+    expect(resolveRemotePairingTarget({ pairingUrl })).toEqual(tailcatTarget);
+    expect(readPairingAppLink(buildPairingAppLink(pairingUrl))).toBe(pairingUrl);
+    // The form takes the address with or without the scheme.
+    expect(
+      resolveRemotePairingTarget({
+        host: `${endpoint.address}:3773`,
+        pairingCode: "pairing-token",
+      }),
+    ).toEqual(tailcatTarget);
+    expect(() =>
+      resolveRemotePairingTarget({ pairingUrl: `tailcat:${endpoint.address}:3773` }),
+    ).toThrowError(RemotePairingTokenMissingError);
+    // A hostname that merely starts with "tc" stays a hostname.
+    expect(
+      resolveRemotePairingTarget({ host: "tcserver.example.com:3773", pairingCode: "code" }),
+    ).toMatchObject({ httpBaseUrl: "https://tcserver.example.com:3773/" });
   });
 
   it("round-trips pairing urls through app links on every channel scheme", () => {

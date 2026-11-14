@@ -103,8 +103,12 @@ export const preparePairingRegistration = Effect.fn(
 )(function* (input: PairingConnectionInput) {
   const target = yield* resolvePairingTarget(input);
   const presentation = yield* ClientCapabilities.ClientPresentation;
+  const reached =
+    target.tailcat === undefined
+      ? target
+      : yield* (yield* ClientCapabilities.TailcatGateway).forward(target.tailcat);
   const descriptor = yield* fetchRemoteEnvironmentDescriptor({
-    httpBaseUrl: target.httpBaseUrl,
+    httpBaseUrl: reached.httpBaseUrl,
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));
   // Checked before redeeming the one-time code, so a wrong link is not spent.
   if (
@@ -126,6 +130,7 @@ export const preparePairingRegistration = Effect.fn(
       label: descriptor.label,
       httpBaseUrl: target.httpBaseUrl,
       wsBaseUrl: target.wsBaseUrl,
+      ...(target.tailcat === undefined ? {} : { tailcat: target.tailcat }),
     }),
   };
   // The registry checks again under its lease; this early check keeps a refused code unspent.
@@ -139,7 +144,7 @@ export const preparePairingRegistration = Effect.fn(
     return yield* compatibilityError;
   }
   const access = yield* bootstrapRemoteBearerSession({
-    httpBaseUrl: target.httpBaseUrl,
+    httpBaseUrl: reached.httpBaseUrl,
     credential: target.credential,
     clientMetadata: presentation.metadata,
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));

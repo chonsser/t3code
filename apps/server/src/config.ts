@@ -109,6 +109,8 @@ export class ServerConfig extends Context.Service<
     readonly logWebSocketEvents: boolean;
     readonly tailscaleServeEnabled: boolean;
     readonly tailscaleServePort: number;
+    /** Run `tailcat serve` beside the server so clients can pair through a tailcat tunnel. */
+    readonly tailcatEnabled?: boolean | undefined;
   }
 >()("t3/config/ServerConfig") {
   static readonly layerTest = (

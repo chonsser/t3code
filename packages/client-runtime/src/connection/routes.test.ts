@@ -10,15 +10,18 @@ import {
 import { pullRequestRoutingConnectionKey } from "./pullRequestRoutingPermissions.ts";
 import { BearerConnectionTarget, RelayConnectionTarget } from "./model.ts";
 import {
+  connectionRouteAddress,
   connectionRouteId,
   connectionRouteKind,
   connectionRouteLabel,
   credentialConnectionId,
+  findRouteToSameAddress,
   insertRoute,
   entryWithRoutes,
   isNearbyAddress,
   mergeLearnedRoutes,
   pendingRouteOrder,
+  routeHttpBaseUrl,
   removedWithRelay,
   routeKeepsItsHost,
   routesAfterRemoving,
@@ -65,7 +68,65 @@ function learned(id: string, httpBaseUrl: string): ConnectionRoute {
   };
 }
 
+function tailcat(address: string): ConnectionRoute {
+  const route = direct("tailcat", "http://tailcat.invalid/");
+  const profile = Option.getOrThrow(route.profile) as BearerConnectionProfile;
+  return {
+    target: route.target,
+    profile: Option.some(
+      new BearerConnectionProfile({ ...profile, tailcat: { address, port: 3773 } }),
+    ),
+  };
+}
+
 describe("connection routes", () => {
+  it("treats a tailcat route as a tunnel with no address of its own", () => {
+    const route = tailcat("tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl");
+
+    expect(connectionRouteKind(route)).toBe("tailcat");
+    expect(connectionRouteLabel(route)).toBe("Tailcat");
+    // Nothing probes, polls, or shares the placeholder URL.
+    expect(routeHttpBaseUrl(route)).toBeNull();
+    expect(connectionRouteAddress(route)).toBe("tailcat:tcAbCdEfGh…");
+    // Two machines share the placeholder URL, so the tailcat address tells them apart.
+    expect(
+      findRouteToSameAddress(
+        [route],
+        tailcat("tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl"),
+      ),
+    ).toBe(route);
+    expect(
+      findRouteToSameAddress(
+        [route],
+        tailcat("tcZzZzEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl"),
+      ),
+    ).toBeUndefined();
+    // Pull request routing trust follows the tailcat address, like any other route address.
+    const trustKey = (trusted: ConnectionRoute) =>
+      pullRequestRoutingConnectionKey({ ...trusted, enabled: true });
+    expect(trustKey(route)).not.toBe(
+      trustKey(tailcat("tcZzZzEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl")),
+    );
+    // Tried after addresses that answer directly, before T3 Connect.
+    expect(insertRoute([LAN, PUBLIC, RELAY], route)).toEqual([LAN, PUBLIC, route, RELAY]);
+    // A token paired through the tunnel is not sent over plain HTTP on the LAN.
+    const merged = mergeLearnedRoutes({
+      entry: entryWithRoutes({ target: route.target, profile: route.profile, enabled: true }, [
+        route,
+      ]),
+      activeRoute: route,
+      reported: [
+        { httpBaseUrl: "http://192.168.1.10:3773/", kind: "lan" },
+        { httpBaseUrl: "https://desk.tail1234.ts.net/", kind: "tailnet" },
+      ],
+      allowInsecure: true,
+    });
+    expect(merged?.map((learnedRoute) => routeHttpBaseUrl(learnedRoute))).toEqual([
+      "https://desk.tail1234.ts.net/",
+      null,
+    ]);
+  });
+
   it("classifies direct routes by address", () => {
     expect(connectionRouteKind(LAN)).toBe("lan");
     // Tailscale, Cloudflare WARP and Mesh, and other VPNs share 100.64.0.0/10.

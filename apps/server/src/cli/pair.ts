@@ -9,7 +9,7 @@ import { resolveWorktreeT3Home } from "@t3tools/shared/devHome";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { formatHostForUrl, isWildcardHost } from "@t3tools/shared/hostClassification";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
-import { buildPairingAppLink } from "@t3tools/shared/remote";
+import { buildPairingAppLink, buildTailcatPairingUrl } from "@t3tools/shared/remote";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import {
   buildTailscaleHttpsBaseUrl,
@@ -104,6 +104,24 @@ export class TailscaleUnavailableError extends Schema.TaggedError<TailscaleUnava
 ) {
   override get message(): string {
     return "Could not talk to Tailscale. Is tailscaled running? Try `tailscale status`.";
+  }
+}
+
+export class TailcatNotServingError extends Schema.TaggedError<TailcatNotServingError>()(
+  "TailcatNotServingError",
+  { serveCommand: Schema.String },
+) {
+  override get message(): string {
+    return `The running server is not serving over tailcat. Restart it with \`${this.serveCommand} --tailcat\` (or T3CODE_TAILCAT=1), and check its log if tailcat is not installed.`;
+  }
+}
+
+export class PairingRouteConflictError extends Schema.TaggedError<PairingRouteConflictError>()(
+  "PairingRouteConflictError",
+  {},
+) {
+  override get message(): string {
+    return "Pass --tailscale or --tailcat, not both.";
   }
 }
 
@@ -503,6 +521,13 @@ const tailscaleFlag = Flag.Boolean("tailscale").pipe(
   Flag.withDefault(false),
 );
 
+const tailcatFlag = Flag.Boolean("tailcat").pipe(
+  Flag.withDescription(
+    "Pair the mobile app through the server's tailcat tunnel. The server must run with --tailcat.",
+  ),
+  Flag.withDefault(false),
+);
+
 const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
   Flag.withSchema(PortSchema),
   Flag.withDescription("HTTPS port for Tailscale Serve when --tailscale is enabled."),
@@ -516,6 +541,7 @@ export const pairCommand = Command.make("pair", {
   label: labelFlag,
   tailscale: tailscaleFlag,
   tailscaleServePort: tailscaleServePortFlag,
+  tailcat: tailcatFlag,
 }).pipe(
   Command.withDescription(
     "Mint a pairing token for a running T3 Code server and print it as a QR code.",
@@ -544,9 +570,24 @@ export const pairCommand = Command.make("pair", {
         });
       }
 
+      if (flags.tailscale && flags.tailcat) {
+        return yield* new PairingRouteConflictError();
+      }
+      const tailcat = flags.tailcat ? target.state.tailcat : undefined;
+      if (flags.tailcat && tailcat === undefined) {
+        return yield* new TailcatNotServingError({
+          serveCommand: (yield* resolveHostCliCommand("serve")).command,
+        });
+      }
+
       const notes: Array<string> = [];
       let pairingBaseUrl: string;
-      if (flags.tailscale) {
+      if (tailcat !== undefined) {
+        pairingBaseUrl = target.state.origin;
+        notes.push(
+          "This link works in the T3 Code mobile app, from any network. The tailcat address in it stays the same across restarts; delete tailcat.private.json from the server's data directory to replace it.",
+        );
+      } else if (flags.tailscale) {
         // Serve stays on after this command exits, so refuse before turning it on.
         const policy = yield* ManagedPolicy.ManagedPolicy.pipe(Effect.provide(ManagedPolicy.layer));
         if (!ManagedLimits.allowsRemoteClients(policy)) {
@@ -586,7 +627,10 @@ export const pairCommand = Command.make("pair", {
         ttl: flags.ttl,
         label: flags.label,
       });
-      const pairingUrl = buildPairingUrl(pairingBaseUrl, issued.credential);
+      const pairingUrl =
+        tailcat === undefined
+          ? buildPairingUrl(pairingBaseUrl, issued.credential)
+          : buildTailcatPairingUrl(tailcat, issued.credential);
 
       yield* Console.log(
         formatPairOutput({

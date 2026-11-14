@@ -22,6 +22,8 @@ export const PersistedServerRuntimeState = Schema.Struct({
   startedAt: Schema.String,
   serviceManaged: Schema.optional(Schema.Boolean),
   serverVersion: Schema.optional(Schema.String),
+  // Set while this server runs `tailcat serve`. The address is a secret, like a pairing token.
+  tailcat: Schema.optional(Schema.Struct({ address: Schema.String, port: Schema.Int })),
   // The managed policy this server loaded at startup, null for none; absent from older servers.
   managedPolicy: Schema.optional(
     Schema.NullOr(

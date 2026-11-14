@@ -280,6 +280,40 @@ describe("connection onboarding", () => {
     }),
   );
 
+  it.effect("pairs through a tailcat tunnel and saves the tailcat address, not the port", () =>
+    Effect.gen(function* () {
+      const endpoint = {
+        address: "tcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEfGhIjKl",
+        port: 3773,
+      };
+      const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
+      const registration = yield* preparePairingRegistration({
+        pairingUrl: `tailcat:${endpoint.address}:3773#token=pairing-token`,
+      }).pipe(
+        Effect.provide(layerPairingOnboarding(undefined, calls)),
+        Effect.provideService(ClientCapabilities.TailcatGateway, {
+          forward: () =>
+            Effect.succeed({
+              httpBaseUrl: "http://127.0.0.1:50123/",
+              wsBaseUrl: "ws://127.0.0.1:50123/",
+            }),
+        }),
+      );
+
+      expect(calls.map((call) => call.url)).toEqual([
+        "http://127.0.0.1:50123/.well-known/t3/environment",
+        "http://127.0.0.1:50123/oauth/token",
+      ]);
+      // The loopback port changes with every tunnel, so only the tailcat endpoint is saved.
+      expect(registration.profile).toMatchObject({
+        connectionId: "bearer:environment-paired:http://tailcat.invalid",
+        httpBaseUrl: "http://tailcat.invalid/",
+        wsBaseUrl: "ws://tailcat.invalid/",
+        tailcat: endpoint,
+      });
+    }),
+  );
+
   it.effect("turns a switched-off environment back on when it is paired again", () =>
     Effect.gen(function* () {
       const registry = yield* EnvironmentRegistry.EnvironmentRegistry;

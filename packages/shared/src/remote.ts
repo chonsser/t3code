@@ -131,11 +131,72 @@ const toWsBaseUrl = (url: URL): string => {
   return next.toString();
 };
 
+/** A tailcat server's address and the port T3 Code listens on behind it. */
+export interface TailcatEndpoint {
+  readonly address: string;
+  readonly port: number;
+}
+
+/**
+ * A tailcat route has no URL of its own: the client opens a tunnel and connects
+ * to the loopback port that yields. This placeholder fills the saved route's
+ * URL fields and resolves nowhere.
+ */
+const TAILCAT_ROUTE_HTTP_BASE_URL = "http://tailcat.invalid/";
+const TAILCAT_ROUTE_WS_BASE_URL = "ws://tailcat.invalid/";
+
+const TAILCAT_ENDPOINT = /^(?:tailcat:)?(tc[A-Za-z0-9_-]{40,}):(\d{1,5})$/;
+
+/**
+ * Reads `tailcat:<address>:<port>`, with or without the prefix. Tailcat
+ * addresses are case-sensitive, so they never pass through `URL`, which
+ * lowercases hosts.
+ */
+export const parseTailcatEndpoint = (value: string): TailcatEndpoint | null => {
+  const match = TAILCAT_ENDPOINT.exec(value.trim());
+  if (match === null) return null;
+  const port = Number(match[2]);
+  return port >= 1 && port <= 65_535 ? { address: match[1]!, port } : null;
+};
+
+export const formatTailcatEndpoint = (endpoint: TailcatEndpoint): string =>
+  `tailcat:${endpoint.address}:${String(endpoint.port)}`;
+
+export const buildTailcatPairingUrl = (endpoint: TailcatEndpoint, credential: string): string =>
+  `${formatTailcatEndpoint(endpoint)}#${new URLSearchParams([[PAIRING_TOKEN_PARAM, credential]])}`;
+
+/** Splits a tailcat pairing link into its endpoint and its token, which may be absent. */
+export const readTailcatPairingUrl = (
+  value: string,
+): { readonly endpoint: TailcatEndpoint; readonly credential: string } | null => {
+  const trimmed = value.trim();
+  const hashAt = trimmed.indexOf("#");
+  const endpoint = parseTailcatEndpoint(hashAt === -1 ? trimmed : trimmed.slice(0, hashAt));
+  if (endpoint === null) return null;
+  const credential =
+    hashAt === -1
+      ? ""
+      : (new URLSearchParams(trimmed.slice(hashAt + 1)).get(PAIRING_TOKEN_PARAM)?.trim() ?? "");
+  return { endpoint, credential };
+};
+
 export interface ResolvedRemotePairingTarget {
   readonly credential: string;
   readonly httpBaseUrl: string;
   readonly wsBaseUrl: string;
+  /** Set when the target is reached through a tailcat tunnel instead of its URL. */
+  readonly tailcat?: TailcatEndpoint;
 }
+
+const tailcatPairingTarget = (
+  endpoint: TailcatEndpoint,
+  credential: string,
+): ResolvedRemotePairingTarget => ({
+  credential,
+  httpBaseUrl: TAILCAT_ROUTE_HTTP_BASE_URL,
+  wsBaseUrl: TAILCAT_ROUTE_WS_BASE_URL,
+  tailcat: endpoint,
+});
 
 export interface HostedPairingRequest {
   readonly host: string;
@@ -207,6 +268,13 @@ export const resolveRemotePairingTarget = (input: {
 }): ResolvedRemotePairingTarget => {
   const pairingUrl = input.pairingUrl?.trim() ?? "";
   if (pairingUrl.length > 0) {
+    const tailcat = readTailcatPairingUrl(pairingUrl);
+    if (tailcat !== null) {
+      if (!tailcat.credential) {
+        throw new RemotePairingTokenMissingError({ host: "tailcat" });
+      }
+      return tailcatPairingTarget(tailcat.endpoint, tailcat.credential);
+    }
     let url: URL;
     try {
       url = new URL(pairingUrl);
@@ -246,6 +314,13 @@ export const resolveRemotePairingTarget = (input: {
   const pairingCode = input.pairingCode?.trim() ?? "";
   if (!host) {
     throw new RemoteBackendUrlMissingError();
+  }
+  const tailcatHost = parseTailcatEndpoint(host);
+  if (tailcatHost !== null) {
+    if (!pairingCode) {
+      throw new RemotePairingCodeMissingError({ host: "tailcat" });
+    }
+    return tailcatPairingTarget(tailcatHost, pairingCode);
   }
   const normalizedHost = normalizeRemoteBaseUrl(host, "direct-host");
   if (!pairingCode) {

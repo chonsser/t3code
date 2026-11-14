@@ -1,4 +1,10 @@
-import { readHostedPairingRequest } from "@t3tools/shared/remote";
+import {
+  buildTailcatPairingUrl,
+  formatTailcatEndpoint,
+  parseTailcatEndpoint,
+  readHostedPairingRequest,
+  readTailcatPairingUrl,
+} from "@t3tools/shared/remote";
 import * as Schema from "effect/Schema";
 
 const MOBILE_PAIRING_URL_PARAM = "pairingUrl";
@@ -33,6 +39,9 @@ export function buildPairingUrl(host: string, code: string): string {
   if (!h) return "";
   if (!c) return h;
 
+  const tailcat = parseTailcatEndpoint(h);
+  if (tailcat !== null) return buildTailcatPairingUrl(tailcat, c);
+
   try {
     const url = new URL(h.includes("://") ? h : `${isIpLiteral(h) ? "http" : "https"}://${h}`);
     url.hash = new URLSearchParams([["token", c]]).toString();
@@ -45,6 +54,11 @@ export function buildPairingUrl(host: string, code: string): string {
 export function parsePairingUrl(url: string): { host: string; code: string } {
   const trimmed = url.trim();
   if (!trimmed) return { host: "", code: "" };
+
+  const tailcat = readTailcatPairingUrl(trimmed);
+  if (tailcat !== null) {
+    return { host: formatTailcatEndpoint(tailcat.endpoint), code: tailcat.credential };
+  }
 
   try {
     const parsed = new URL(trimmed);
